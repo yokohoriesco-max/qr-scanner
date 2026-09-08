@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>QRコード読み取り</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: sans-serif;
+      background: #f5f5f5;
+      color: #222;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      margin: 10px 0 20px;
+      font-size: 28px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.1);
+    }
+
+    #reader {
+      width: 100%;
+      min-height: 80px;
+      overflow: hidden;
+      border-radius: 10px;
+      background: #111;
+    }
+
+    #message {
+      margin: 15px 0;
+      text-align: center;
+      white-space: pre-line;
+      font-weight: bold;
+      line-height: 1.6;
+    }
+
+    .error {
+      color: #d32f2f;
+    }
+
+    .success {
+      color: #2e7d32;
+    }
+
+    button {
+      width: 100%;
+      min-height: 54px;
+      margin-top: 10px;
+      border: 0;
+      border-radius: 8px;
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #startButton {
+      background: #2e7d32;
+    }
+
+    #stopButton {
+      background: #d32f2f;
+      display: none;
+    }
+
+    #backButton {
+      background: #1976d2;
+    }
+
+    button:disabled {
+      background: #999 !important;
+      cursor: default;
+    }
+
+    .hint {
+      margin-top: 16px;
+      color: #666;
+      font-size: 14px;
+      line-height: 1.6;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+<div class="container">
+
+  <h1>QRコード読み取り</h1>
+
+  <div class="card">
+
+    <div id="reader"></div>
+
+    <div id="message">
+      「カメラを起動」を押してください。
+    </div>
+
+    <button
+      id="startButton"
+      type="button"
+      onclick="startScanner()">
+      📷 カメラを起動
+    </button>
+
+    <button
+      id="stopButton"
+      type="button"
+      onclick="stopScanner()">
+      カメラを停止
+    </button>
+
+    <button
+      id="backButton"
+      type="button"
+      onclick="goBack()">
+      ← 入庫管理へ戻る
+    </button>
+
+    <div class="hint">
+      QRコードをカメラ中央の枠内に入れてください。<br>
+      読み取り成功後、自動的に入庫管理画面へ戻ります。
+    </div>
+
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+<script>
+  var scanner = null;
+  var scanning = false;
+  var finished = false;
+
+  /*
+   * index.htmlから渡される戻り先。
+   * 例：
+   * https://script.google.com/macros/s/xxxxx/exec
+   */
+  var params = new URLSearchParams(window.location.search);
+  var returnUrl = params.get("return") || "";
+
+
+  function setMessage(text, className) {
+    var message = document.getElementById("message");
+    message.textContent = text;
+    message.className = className || "";
+  }
+
+
+  function setButtonState(running) {
+    document.getElementById("startButton").style.display =
+      running ? "none" : "block";
+
+    document.getElementById("stopButton").style.display =
+      running ? "block" : "none";
+  }
+
+
+  function startScanner() {
+
+    if (scanning) {
+      return;
+    }
+
+    if (typeof Html5Qrcode === "undefined") {
+      setMessage(
+        "QR読み取りライブラリを読み込めませんでした。\n" +
+        "インターネット接続を確認してください。",
+        "error"
+      );
+      return;
+    }
+
+    if (!returnUrl) {
+      setMessage(
+        "戻り先URLがありません。\n" +
+        "入庫管理画面からQR読み取りを開始してください。",
+        "error"
+      );
+      return;
+    }
+
+    scanner = new Html5Qrcode("reader");
+    scanning = true;
+    finished = false;
+
+    setButtonState(true);
+    setMessage("カメラを起動しています...", "");
+
+    var config = {
+      fps: 10,
+      qrbox: function(viewfinderWidth, viewfinderHeight) {
+        var size = Math.floor(
+          Math.min(viewfinderWidth, viewfinderHeight) * 0.72
+        );
+        size = Math.max(180, Math.min(size, 320));
+        return {
+          width: size,
+          height: size
+        };
+      },
+      aspectRatio: 1.0
+    };
+
+    /*
+     * まず背面カメラを指定。
+     */
+    scanner.start(
+      { facingMode: "environment" },
+      config,
+      onScanSuccess,
+      onScanFailure
+    ).then(function() {
+      setMessage(
+        "カメラ起動済みです。\nQRコードを映してください。",
+        ""
+      );
+    }).catch(function(error) {
+      console.error(error);
+      showCameraError(error);
+    });
+  }
+
+
+  function onScanFailure(errorMessage) {
+    /*
+     * スキャン中の一時的な未検出は表示しない。
+     */
+  }
+
+
+  function onScanSuccess(decodedText) {
+
+    if (finished) {
+      return;
+    }
+
+    finished = true;
+
+    var value = String(decodedText || "").trim();
+
+    if (!value) {
+      finished = false;
+      return;
+    }
+
+    /*
+     * URL形式のQRの場合は ?id=... を優先。
+     * 例：
+     * https://xxxxx/exec?id=YO20260904-1
+     */
+    try {
+      var url = new URL(value);
+      var qrId = url.searchParams.get("id");
+
+      if (qrId) {
+        value = qrId.trim();
+      }
+    } catch (error) {
+      /* 普通の文字列ならそのまま使用 */
+    }
+
+    if (!value) {
+      setMessage("QRコードの内容が空です。", "error");
+      finished = false;
+      return;
+    }
+
+    setMessage(
+      "読み取りました：\n" + value + "\n\n入庫管理へ戻ります...",
+      "success"
+    );
+
+    stopScanner().then(function() {
+      goBackWithId(value);
+    });
+  }
+
+
+  function stopScanner() {
+
+    if (!scanner || !scanning) {
+      scanning = false;
+      setButtonState(false);
+      return Promise.resolve();
+    }
+
+    return scanner.stop()
+      .catch(function(error) {
+        console.warn("scanner.stop:", error);
+      })
+      .then(function() {
+        try {
+          scanner.clear();
+        } catch (error) {
+          console.warn("scanner.clear:", error);
+        }
+
+        scanner = null;
+        scanning = false;
+        setButtonState(false);
+      });
+  }
+
+
+  function showCameraError(error) {
+
+    scanning = false;
+    setButtonState(false);
+
+    var detail = "";
+
+    if (error && error.name) {
+      detail = "\nエラー：" + error.name;
+    }
+
+    setMessage(
+      "カメラを起動できませんでした。\n\n" +
+      "① ブラウザのカメラ許可を確認してください。\n" +
+      "② カメラを使用している他のアプリを閉じてください。\n" +
+      "③ スマートフォンの場合はHTTPSで開いているか確認してください。" +
+      detail,
+      "error"
+    );
+
+    try {
+      if (scanner) {
+        scanner.clear();
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+
+    scanner = null;
+  }
+
+
+  function buildReturnUrl(value) {
+
+    var url = new URL(returnUrl);
+
+    url.search = "";
+    url.searchParams.set("id", value);
+
+    return url.toString();
+  }
+
+
+  function goBackWithId(value) {
+
+    var targetUrl = buildReturnUrl(value);
+
+    /*
+     * 元の入庫管理画面を開いたタブへ戻す。
+     * window.opener が利用できる場合は元タブを更新して
+     * QRタブを閉じる。
+     */
+    if (window.opener && !window.opener.closed) {
+
+      try {
+        window.opener.location.href = targetUrl;
+        window.close();
+        return;
+      } catch (error) {
+        console.warn("window.opener:", error);
+      }
+    }
+
+    /*
+     * window.opener が使えない場合は、このタブ自身で戻る。
+     */
+    window.location.href = targetUrl;
+  }
+
+
+  function goBack() {
+
+    if (returnUrl) {
+      window.location.href = returnUrl;
+      return;
+    }
+
+    history.back();
+  }
+
+
+  window.addEventListener("beforeunload", function() {
+    if (scanner && scanning) {
+      try {
+        scanner.stop();
+      } catch (error) {
+        console.warn(error);
+      }
+    }
+  });
+</script>
+
+</body>
+</html>
