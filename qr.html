@@ -2,8 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QRコード読み取り</title>
 
   <style>
@@ -31,10 +30,10 @@
     }
 
     .card {
-      background: #fff;
+      background: white;
       border-radius: 12px;
       padding: 20px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 2px 8px rgba(0,0,0,.1);
     }
 
     #reader {
@@ -86,11 +85,6 @@
       background: #1976d2;
     }
 
-    button:disabled {
-      background: #999 !important;
-      cursor: default;
-    }
-
     .hint {
       margin-top: 16px;
       color: #666;
@@ -138,7 +132,7 @@
 
     <div class="hint">
       QRコードをカメラ中央の枠内に入れてください。<br>
-      読み取り成功後、自動的に入庫管理画面へ戻ります。
+      読み取り成功後、自動的に出庫処理画面へ戻ります。
     </div>
 
   </div>
@@ -146,557 +140,311 @@
 </div>
 
 
-<!-- QR読み取りライブラリ -->
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
 
 <script>
 
-  /* =========================================================
-     基本設定
-     ========================================================= */
-
-  var scanner = null;
-  var scanning = false;
-  var finished = false;
-
-  /*
-   * Apps Script の戻り先
-   *
-   * 商品QRを読んだ場合、
-   *
-   * ?id=商品コード&stockout=1
-   *
-   * を付けて戻る。
-   */
-  var DEFAULT_RETURN_URL =
-    "https://script.google.com/macros/s/AKfycbwzNo1eSSIO3i2VA7UjLUj9Rj4kEWKiQPfx8xYWMuLLYoc2v5Dtkh5TY8F502Za72Q/exec";
+var scanner = null;
+var scanning = false;
+var finished = false;
 
 
-  /*
-   * URLパラメータ
-   */
-  var params = new URLSearchParams(window.location.search);
-
-  /*
-   * return が渡されていればそれを使用。
-   * 渡されていなくても DEFAULT_RETURN_URL を使用。
-   */
-  var returnUrl =
-    params.get("return") || DEFAULT_RETURN_URL;
+/*
+ * Apps ScriptのURL
+ */
+var returnUrl =
+  "https://script.google.com/macros/s/AKfycbwzNo1eSSIO3i2VA7UjLUj9Rj4kEWKiQPfx8xYWMuLLYoc2v5Dtkh5TY8F502Za72Q/exec";
 
 
+/*
+ * 画面メッセージ
+ */
+function setMessage(text, className) {
 
-  /* =========================================================
-     メッセージ表示
-     ========================================================= */
+  var message = document.getElementById("message");
 
-  function setMessage(text, className) {
+  message.textContent = text;
 
-    var message = document.getElementById("message");
+  message.className = className || "";
+}
 
-    message.textContent = text;
 
-    message.className = className || "";
+/*
+ * ボタン表示
+ */
+function setButtonState(running) {
+
+  document.getElementById("startButton").style.display =
+    running ? "none" : "block";
+
+  document.getElementById("stopButton").style.display =
+    running ? "block" : "none";
+}
+
+
+/*
+ * カメラ開始
+ */
+function startScanner() {
+
+  if (scanning) {
+    return;
   }
 
-
-
-  /* =========================================================
-     ボタン表示
-     ========================================================= */
-
-  function setButtonState(running) {
-
-    document.getElementById("startButton").style.display =
-      running ? "none" : "block";
-
-    document.getElementById("stopButton").style.display =
-      running ? "block" : "none";
-  }
-
-
-
-  /* =========================================================
-     カメラ開始
-     ========================================================= */
-
-  function startScanner() {
-
-    if (scanning) {
-      return;
-    }
-
-    if (typeof Html5Qrcode === "undefined") {
-
-      setMessage(
-        "QR読み取りライブラリを読み込めませんでした。\n" +
-        "インターネット接続を確認してください。",
-        "error"
-      );
-
-      return;
-    }
-
-    scanner = new Html5Qrcode("reader");
-
-    scanning = true;
-    finished = false;
-
-    setButtonState(true);
+  if (typeof Html5Qrcode === "undefined") {
 
     setMessage(
-      "カメラを起動しています...",
+      "QR読み取りライブラリを読み込めませんでした。",
+      "error"
+    );
+
+    return;
+  }
+
+  scanner = new Html5Qrcode("reader");
+
+  scanning = true;
+  finished = false;
+
+  setButtonState(true);
+
+  setMessage(
+    "カメラを起動しています...",
+    ""
+  );
+
+
+  var config = {
+
+    fps: 10,
+
+    qrbox: function(width, height) {
+
+      var size = Math.floor(
+        Math.min(width, height) * 0.72
+      );
+
+      size = Math.max(180, Math.min(size, 320));
+
+      return {
+        width: size,
+        height: size
+      };
+    },
+
+    aspectRatio: 1.0
+  };
+
+
+  scanner.start(
+    { facingMode: "environment" },
+    config,
+    onScanSuccess,
+    onScanFailure
+
+  ).then(function() {
+
+    setMessage(
+      "カメラ起動済みです。\nQRコードを映してください。",
       ""
     );
 
+  }).catch(function(error) {
 
-    /*
-     * QRコードの読み取り設定
-     */
-    var config = {
+    console.error(error);
 
-      fps: 10,
-
-      qrbox: function(viewfinderWidth, viewfinderHeight) {
-
-        var size = Math.floor(
-          Math.min(
-            viewfinderWidth,
-            viewfinderHeight
-          ) * 0.72
-        );
-
-        size = Math.max(
-          180,
-          Math.min(size, 320)
-        );
-
-        return {
-          width: size,
-          height: size
-        };
-      },
-
-      aspectRatio: 1.0
-    };
+    showCameraError(error);
+  });
+}
 
 
-    /*
-     * 背面カメラを使用
-     */
-    scanner.start(
-      {
-        facingMode: "environment"
-      },
+/*
+ * 読み取り失敗
+ */
+function onScanFailure(errorMessage) {
+  /*
+   * 何もしない
+   */
+}
 
-      config,
 
-      onScanSuccess,
+/*
+ * QR読み取り成功
+ */
+function onScanSuccess(decodedText) {
 
-      onScanFailure
+  if (finished) {
+    return;
+  }
 
-    ).then(function() {
+  finished = true;
 
-      setMessage(
-        "カメラ起動済みです。\n" +
-        "QRコードを映してください。",
-        ""
-      );
 
-    }).catch(function(error) {
+  /*
+   * 読み取った文字
+   */
+  var value = String(decodedText || "").trim();
 
-      console.error(
-        "camera start error:",
-        error
-      );
 
-      showCameraError(error);
-    });
+  if (!value) {
+
+    finished = false;
+
+    return;
   }
 
 
+  /*
+   * URLのQRだった場合は
+   * ?id=○○ を取り出す
+   */
+  try {
 
-  /* =========================================================
-     読み取り失敗
-     ========================================================= */
+    var qrUrl = new URL(value);
 
-  function onScanFailure(errorMessage) {
+    var qrId = qrUrl.searchParams.get("id");
+
+    if (qrId) {
+      value = String(qrId).trim();
+    }
+
+  } catch (e) {
 
     /*
-     * 読み取り中の一時的な失敗は
-     * 画面に表示しない。
+     * te-pu のような普通の文字列なら
+     * そのまま使用
      */
-
   }
 
 
-
-  /* =========================================================
-     QR読み取り成功
-     ========================================================= */
-
-  function onScanSuccess(decodedText) {
-
-    /*
-     * 二重読み取り防止
-     */
-    if (finished) {
-      return;
-    }
-
-    finished = true;
+  /*
+   * 読み取り結果
+   */
+  setMessage(
+    "読み取りました：\n" +
+    value +
+    "\n\n出庫処理画面へ戻ります...",
+    "success"
+  );
 
 
-    /*
-     * 読み取った文字列
-     */
-    var value =
-      String(decodedText || "").trim();
+  /*
+   * 戻り先URLを作る
+   */
+  var targetUrl =
+    returnUrl +
+    "?id=" +
+    encodeURIComponent(value) +
+    "&stockout=1";
 
 
-    if (!value) {
-
-      finished = false;
-
-      return;
-    }
+  console.log("移動先：", targetUrl);
 
 
-    /*
-     * =====================================================
-     * URL形式のQRにも対応
-     *
-     * 例：
-     * https://xxxxx/exec?id=te-pu
-     *
-     * ↓
-     *
-     * te-pu
-     * =====================================================
-     */
+  /*
+   * 0.5秒後に直接移動
+   *
+   * カメラ停止を待たない。
+   */
+  setTimeout(function() {
 
-    try {
+    window.location.href = targetUrl;
 
-      var qrUrl = new URL(value);
-
-      var qrId =
-        qrUrl.searchParams.get("id");
-
-      if (qrId) {
-
-        value =
-          String(qrId).trim();
-      }
-
-    } catch (error) {
-
-      /*
-       * URLではない普通の文字列なら
-       * そのまま商品コードとして使用。
-       */
-
-    }
+  }, 500);
+}
 
 
-    if (!value) {
+/*
+ * カメラ停止
+ */
+function stopScanner() {
 
-      setMessage(
-        "QRコードの内容が空です。",
-        "error"
-      );
-
-      finished = false;
-
-      return;
-    }
-
-
-    /*
-     * 読み取り成功表示
-     */
-    setMessage(
-      "読み取りました：\n" +
-      value +
-      "\n\n出庫処理画面へ戻ります...",
-      "success"
-    );
-
-
-    /*
-     * カメラを停止してから戻る
-     */
-    stopScanner().then(function() {
-
-      /*
-       * 少しだけ待ってから画面遷移
-       */
-      setTimeout(function() {
-
-        goBackWithId(value);
-
-      }, 300);
-
-    });
-  }
-
-
-
-  /* =========================================================
-     カメラ停止
-     ========================================================= */
-
-  function stopScanner() {
-
-    if (!scanner || !scanning) {
-
-      scanning = false;
-
-      setButtonState(false);
-
-      return Promise.resolve();
-    }
-
-
-    return scanner.stop()
-
-      .catch(function(error) {
-
-        console.warn(
-          "scanner.stop:",
-          error
-        );
-
-      })
-
-      .then(function() {
-
-        try {
-
-          scanner.clear();
-
-        } catch (error) {
-
-          console.warn(
-            "scanner.clear:",
-            error
-          );
-        }
-
-
-        scanner = null;
-
-        scanning = false;
-
-        setButtonState(false);
-      });
-  }
-
-
-
-  /* =========================================================
-     カメラエラー
-     ========================================================= */
-
-  function showCameraError(error) {
+  if (!scanner || !scanning) {
 
     scanning = false;
 
     setButtonState(false);
 
-
-    var detail = "";
-
-
-    if (error && error.name) {
-
-      detail =
-        "\nエラー：" +
-        error.name;
-    }
+    return;
+  }
 
 
-    setMessage(
-
-      "カメラを起動できませんでした。\n\n" +
-
-      "① ブラウザのカメラ許可を確認してください。\n" +
-
-      "② カメラを使用している他のアプリを閉じてください。\n" +
-
-      "③ スマートフォンの場合はHTTPSで開いているか確認してください。" +
-
-      detail,
-
-      "error"
-    );
-
+  scanner.stop().then(function() {
 
     try {
-
-      if (scanner) {
-
-        scanner.clear();
-      }
-
+      scanner.clear();
     } catch (e) {
-
-      console.warn(e);
+      console.log(e);
     }
-
 
     scanner = null;
-  }
+
+    scanning = false;
+
+    setButtonState(false);
+
+  }).catch(function(error) {
+
+    console.log(error);
+
+    scanner = null;
+
+    scanning = false;
+
+    setButtonState(false);
+  });
+}
 
 
+/*
+ * カメラエラー
+ */
+function showCameraError(error) {
 
-  /* =========================================================
-     戻り先URLを作成
-     ========================================================= */
+  scanning = false;
 
-  function buildReturnUrl(value) {
+  setButtonState(false);
 
-    /*
-     * Apps Script URLをコピーして作成
-     */
-    var url =
-      new URL(returnUrl);
+  setMessage(
+    "カメラを起動できませんでした。\n\n" +
+    "スマートフォンのブラウザで\n" +
+    "カメラの使用を許可してください。",
+    "error"
+  );
 
-
-    /*
-     * 商品コード
-     */
-    url.searchParams.set(
-      "id",
-      value
-    );
+  scanner = null;
+}
 
 
-    /*
-     * 出庫処理モード
-     */
-    url.searchParams.set(
-      "stockout",
-      "1"
-    );
+/*
+ * 戻るボタン
+ */
+function goBack() {
+
+  stopScanner();
+
+  window.location.href = returnUrl;
+}
 
 
-    return url.toString();
-  }
+/*
+ * ページを閉じるとき
+ */
+window.addEventListener(
+  "beforeunload",
+  function() {
 
-
-
-  /* =========================================================
-     商品コード付きでApps Scriptへ戻る
-     ========================================================= */
-
-  function goBackWithId(value) {
-
-    var targetUrl =
-      buildReturnUrl(value);
-
-
-    console.log(
-      "QR return URL:",
-      targetUrl
-    );
-
-
-    /*
-     * 新しいタブから開かれている場合
-     *
-     * 元のタブを更新して、
-     * QRタブを閉じる。
-     */
-    if (
-      window.opener &&
-      !window.opener.closed
-    ) {
+    if (scanner && scanning) {
 
       try {
-
-        window.opener.location.href =
-          targetUrl;
-
-        window.close();
-
-        return;
-
-      } catch (error) {
-
-        console.warn(
-          "window.opener:",
-          error
-        );
+        scanner.stop();
+      } catch (e) {
+        console.log(e);
       }
     }
-
-
-    /*
-     * =====================================================
-     * 重要
-     *
-     * window.opener が無い場合は
-     * 現在のQR画面から直接Apps Scriptへ移動。
-     *
-     * window.location.href ではなく
-     * window.top.location.href を使用。
-     * =====================================================
-     */
-
-    window.top.location.href =
-      targetUrl;
   }
-
-
-
-  /* =========================================================
-     戻るボタン
-     ========================================================= */
-
-  function goBack() {
-
-    /*
-     * カメラが動いていたら停止
-     */
-    stopScanner().then(function() {
-
-      /*
-       * 商品コードを付けずに
-       * Apps Scriptの最初の画面へ戻る。
-       */
-      window.top.location.href =
-        returnUrl;
-
-    });
-  }
-
-
-
-  /* =========================================================
-     ページを閉じる・移動する前にカメラ停止
-     ========================================================= */
-
-  window.addEventListener(
-    "beforeunload",
-    function() {
-
-      if (
-        scanner &&
-        scanning
-      ) {
-
-        try {
-
-          scanner.stop();
-
-        } catch (error) {
-
-          console.warn(error);
-        }
-      }
-    }
-  );
+);
 
 </script>
 
