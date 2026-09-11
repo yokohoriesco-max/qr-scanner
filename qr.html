@@ -347,13 +347,13 @@ function onScanSuccess(decodedText) {
    *
    * カメラ停止を待たない。
    */
-  setTimeout(function() {
+setTimeout(function() {
 
-    window.location.href = targetUrl;
+  alert("これから移動します\n\n" + targetUrl);
 
-  }, 500);
-}
+  window.location.href = targetUrl;
 
+}, 500);
 
 /*
  * カメラ停止
