@@ -207,144 +207,61 @@ function setButtonState(running) {
  * getCameras() を使ってカメラを取得する
  */
 function startScanner() {
+  if (scanning) return;
 
-  if (scanning) {
+  if (typeof Html5Qrcode === "undefined") {
+    setMessage("QR読み取りライブラリを読み込めませんでした。", "error");
     return;
   }
 
-  if (typeof Html5Qrcode === "undefined") {
+  setMessage("背面カメラを起動しています...", "");
+
+  scanner = new Html5Qrcode("reader");
+  scanning = true;
+  finished = false;
+  setButtonState(true);
+
+  var config = {
+    fps: 10,
+    qrbox: function(width, height) {
+      var size = Math.floor(Math.min(width, height) * 0.72);
+      size = Math.max(180, Math.min(size, 320));
+      return {
+        width: size,
+        height: size
+      };
+    },
+    aspectRatio: 1.0
+  };
+
+  scanner.start(
+    { facingMode: "environment" },
+    config,
+    onScanSuccess,
+    onScanFailure
+  )
+  .then(function() {
+    setMessage(
+      "背面カメラ起動済みです。\nQRコードを映してください。",
+      ""
+    );
+  })
+  .catch(function(error) {
+    console.error(error);
+
+    scanning = false;
+    finished = false;
+    setButtonState(false);
 
     setMessage(
-      "QR読み取りライブラリを読み込めませんでした。",
+      "背面カメラを起動できませんでした。\n\n" +
+      "スマートフォンのカメラ使用を許可してください。\n\n" +
+      "エラー：" + (error.message || error),
       "error"
     );
 
-    return;
-  }
-
-
-  setMessage(
-    "カメラを起動しています...",
-    ""
-  );
-
-
-  /*
-   * カメラ取得
-   */
-  Html5Qrcode.getCameras()
-
-    .then(function(cameras) {
-
-      if (!cameras || cameras.length === 0) {
-
-        throw new Error(
-          "カメラが見つかりませんでした。"
-        );
-      }
-
-
-      /*
-       * 背面カメラを優先
-       */
-      var cameraId = cameras[0].id;
-
-      for (var i = 0; i < cameras.length; i++) {
-
-        var label =
-          String(cameras[i].label || "").toLowerCase();
-
-        if (
-          label.indexOf("back") >= 0 ||
-          label.indexOf("rear") >= 0 ||
-          label.indexOf("environment") >= 0
-        ) {
-
-          cameraId = cameras[i].id;
-
-          break;
-        }
-      }
-
-
-      scanner = new Html5Qrcode("reader");
-
-      scanning = true;
-      finished = false;
-
-      setButtonState(true);
-
-
-      /*
-       * QR設定
-       */
-      var config = {
-
-        fps: 10,
-
-        qrbox: function(width, height) {
-
-          var size = Math.floor(
-            Math.min(width, height) * 0.72
-          );
-
-          size =
-            Math.max(
-              180,
-              Math.min(size, 320)
-            );
-
-          return {
-            width: size,
-            height: size
-          };
-        },
-
-        aspectRatio: 1.0
-      };
-
-
-      /*
-       * カメラ開始
-       */
-      return scanner.start(
-        cameraId,
-        config,
-        onScanSuccess,
-        onScanFailure
-      );
-
-    })
-
-    .then(function() {
-
-      setMessage(
-        "カメラ起動済みです。\nQRコードを映してください。",
-        ""
-      );
-
-    })
-
-    .catch(function(error) {
-
-      console.error(error);
-
-      scanning = false;
-      finished = false;
-
-      setButtonState(false);
-
-      setMessage(
-        "カメラを起動できませんでした。\n\n" +
-        "スマートフォンのブラウザで\n" +
-        "カメラの使用を許可してください。\n\n" +
-        "エラー：" +
-        (error.message || error),
-        "error"
-      );
-
-      scanner = null;
-    });
+    scanner = null;
+  });
 }
 
 
