@@ -348,28 +348,7 @@ function onScanSuccess(decodedText) {
    * カメラ停止を待たない。
    */
 setTimeout(function() {
-
-  var link = document.createElement("a");
-
-  link.href = targetUrl;
-
-  link.textContent = "出庫処理画面へ移動";
-
-  link.style.display = "block";
-  link.style.margin = "20px";
-  link.style.padding = "20px";
-  link.style.background = "#1976d2";
-  link.style.color = "white";
-  link.style.textAlign = "center";
-  link.style.borderRadius = "10px";
-  link.style.fontSize = "20px";
-  link.style.fontWeight = "bold";
-  link.style.textDecoration = "none";
-
-  document.body.innerHTML = "";
-
-  document.body.appendChild(link);
-
+  window.location.href = targetUrl;
 }, 500);
 
 }
