@@ -44,6 +44,11 @@
       background: #111;
     }
 
+    /* カメラ映像の左右反転を解除 */
+    #reader video {
+      transform: scaleX(1) !important;
+    }
+
     #message {
       margin: 15px 0;
       text-align: center;
@@ -139,12 +144,10 @@
 
 </div>
 
-
 <script
   src="https://unpkg.com/html5-qrcode"
   type="text/javascript">
 </script>
-
 
 <script>
 
@@ -152,31 +155,14 @@ var scanner = null;
 var scanning = false;
 var finished = false;
 
-
-/*
- * Apps Scriptの最新デプロイURL
- */
 var returnUrl =
   "https://script.google.com/macros/s/AKfycbwzNo1eSSIO3i2VA7UjLUj9Rj4kEWKiQPfx8xYWMuLLYoc2v5Dtkh5TY8F502Za72Q/exec";
 
-
-/*
- * 入庫 / 出庫を判定
- *
- * 入庫：
- * qr.html?mode=inbound
- *
- * 出庫：
- * qr.html?mode=stockout
- */
 var params = new URLSearchParams(window.location.search);
 
 var mode = params.get("mode") || "inbound";
 
 
-/*
- * メッセージ表示
- */
 function setMessage(text, className) {
 
   var message = document.getElementById("message");
@@ -187,9 +173,6 @@ function setMessage(text, className) {
 }
 
 
-/*
- * ボタン表示
- */
 function setButtonState(running) {
 
   document.getElementById("startButton").style.display =
@@ -200,64 +183,96 @@ function setButtonState(running) {
 }
 
 
-/*
- * カメラ開始
- *
- * iPhone対策として
- * getCameras() を使ってカメラを取得する
- */
 function startScanner() {
+
   if (scanning) return;
 
   if (typeof Html5Qrcode === "undefined") {
-    setMessage("QR読み取りライブラリを読み込めませんでした。", "error");
+
+    setMessage(
+      "QR読み取りライブラリを読み込めませんでした。",
+      "error"
+    );
+
     return;
   }
 
-  setMessage("背面カメラを起動しています...", "");
+  setMessage(
+    "背面カメラを起動しています...",
+    ""
+  );
 
   scanner = new Html5Qrcode("reader");
+
   scanning = true;
   finished = false;
+
   setButtonState(true);
 
   var config = {
+
     fps: 10,
+
     qrbox: function(width, height) {
-      var size = Math.floor(Math.min(width, height) * 0.72);
-      size = Math.max(180, Math.min(size, 320));
+
+      var size =
+        Math.floor(Math.min(width, height) * 0.72);
+
+      size =
+        Math.max(180, Math.min(size, 320));
+
       return {
         width: size,
         height: size
       };
     },
+
     aspectRatio: 1.0
   };
 
+
   scanner.start(
-    { facingMode: "environment" },
+
+    {
+      facingMode: "environment"
+    },
+
     config,
+
     onScanSuccess,
+
     onScanFailure
+
   )
+
   .then(function() {
+
     setMessage(
-      "背面カメラ起動済みです。\nQRコードを映してください。",
+      "カメラ起動済みです。\nQRコードを映してください。",
       ""
     );
+
   })
+
   .catch(function(error) {
+
     console.error(error);
 
     scanning = false;
     finished = false;
+
     setButtonState(false);
 
     setMessage(
-      "背面カメラを起動できませんでした。\n\n" +
-      "スマートフォンのカメラ使用を許可してください。\n\n" +
-      "エラー：" + (error.message || error),
+
+      "カメラを起動できませんでした。\n\n" +
+      "スマートフォンのブラウザで\n" +
+      "カメラの使用を許可してください。\n\n" +
+      "エラー：" +
+      (error.message || error),
+
       "error"
+
     );
 
     scanner = null;
@@ -265,35 +280,19 @@ function startScanner() {
 }
 
 
-/*
- * 読み取り失敗
- */
 function onScanFailure(errorMessage) {
-
-  /*
-   * 読み取り途中のエラーは無視
-   */
+  // 読み取り失敗は無視
 }
 
 
-/*
- * QR読み取り成功
- */
 function onScanSuccess(decodedText) {
 
-  if (finished) {
-    return;
-  }
+  if (finished) return;
 
   finished = true;
 
-
-  /*
-   * 読み取った文字
-   */
   var value =
     String(decodedText || "").trim();
-
 
   if (!value) {
 
@@ -303,13 +302,7 @@ function onScanSuccess(decodedText) {
   }
 
 
-  /*
-   * QRの中身がURLだった場合
-   *
-   * ?id=○○
-   *
-   * の○○を取り出す
-   */
+  /* QRの中身がURLの場合 */
   try {
 
     var qrUrl = new URL(value);
@@ -324,80 +317,66 @@ function onScanSuccess(decodedText) {
     }
 
   } catch (e) {
-
-    /*
-     * te-pu や納品書No.など
-     * 普通の文字列ならそのまま使う
-     */
+    // URLではない通常のQR
   }
 
 
-  /*
-   * 入庫 / 出庫でメッセージを変更
-   */
+  /* 出庫 */
   if (mode === "stockout") {
 
     setMessage(
+
       "商品QRを読み取りました：\n" +
       value +
       "\n\n出庫処理画面へ移動します...",
+
       "success"
     );
 
-  } else {
+  }
+
+  /* 入庫 */
+  else {
 
     setMessage(
+
       "納品書QRを読み取りました：\n" +
       value +
       "\n\n入庫処理画面へ移動します...",
+
       "success"
     );
   }
 
 
-  /*
-   * 移動先URL
-   */
   var targetUrl;
 
 
   if (mode === "stockout") {
 
-    /*
-     * 出庫
-     */
     targetUrl =
       returnUrl +
       "?id=" +
       encodeURIComponent(value) +
       "&stockout=1";
 
-  } else {
+  }
 
-    /*
-     * 入庫
-     */
+  else {
+
     targetUrl =
       returnUrl +
       "?id=" +
       encodeURIComponent(value);
+
   }
 
 
-  console.log(
-    "モード：",
-    mode
-  );
+  console.log("モード：", mode);
 
-  console.log(
-    "移動先：",
-    targetUrl
-  );
+  console.log("移動先：", targetUrl);
 
 
-  /*
-   * 0.5秒後に自動移動
-   */
   setTimeout(function() {
 
     window.location.href =
@@ -407,9 +386,6 @@ function onScanSuccess(decodedText) {
 }
 
 
-/*
- * カメラ停止
- */
 function stopScanner() {
 
   if (!scanner || !scanning) {
@@ -461,9 +437,6 @@ function stopScanner() {
 }
 
 
-/*
- * 戻る
- */
 function goBack() {
 
   stopScanner();
@@ -473,9 +446,6 @@ function goBack() {
 }
 
 
-/*
- * ページを閉じる
- */
 window.addEventListener(
   "beforeunload",
   function() {
