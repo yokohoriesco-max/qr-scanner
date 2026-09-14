@@ -2,469 +2,447 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>QRコード読み取り</title>
 
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+  <script src="https://unpkg.com/html5-qrcode"></script>
 
+  <style>
     body {
       margin: 0;
-      padding: 16px;
-      font-family: sans-serif;
+      padding: 20px;
+      font-family: Arial, sans-serif;
       background: #f5f5f5;
-      color: #222;
-    }
-
-    .container {
-      max-width: 600px;
-      margin: 0 auto;
+      text-align: center;
     }
 
     h1 {
-      text-align: center;
-      margin: 10px 0 20px;
-      font-size: 28px;
+      font-size: 24px;
+      margin-bottom: 15px;
     }
 
-    .card {
-      background: white;
-      border-radius: 12px;
-      padding: 20px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.1);
+    #message {
+      white-space: pre-line;
+      font-size: 18px;
+      margin: 15px 0;
+      min-height: 50px;
     }
 
     #reader {
       width: 100%;
-      min-height: 80px;
-      overflow: hidden;
+      max-width: 600px;
+      margin: 0 auto;
+      background: white;
       border-radius: 10px;
-      background: #111;
+      overflow: hidden;
     }
 
-    /* カメラ映像の左右反転を解除 */
     #reader video {
-      transform: scaleX(1) !important;
-    }
-
-    #message {
-      margin: 15px 0;
-      text-align: center;
-      white-space: pre-line;
-      font-weight: bold;
-      line-height: 1.6;
-    }
-
-    .error {
-      color: #d32f2f;
-    }
-
-    .success {
-      color: #2e7d32;
+      width: 100% !important;
+      height: auto !important;
+      transform: none !important;
     }
 
     button {
       width: 100%;
-      min-height: 54px;
-      margin-top: 10px;
-      border: 0;
+      max-width: 600px;
+      height: 55px;
+      margin-top: 15px;
+      border: none;
       border-radius: 8px;
-      color: white;
       font-size: 18px;
       font-weight: bold;
       cursor: pointer;
     }
 
     #startButton {
-      background: #2e7d32;
-    }
-
-    #stopButton {
-      background: #d32f2f;
-      display: none;
+      background: #1976d2;
+      color: white;
     }
 
     #backButton {
-      background: #1976d2;
+      background: #666;
+      color: white;
     }
 
-    .hint {
-      margin-top: 16px;
-      color: #666;
-      font-size: 14px;
-      line-height: 1.6;
-      text-align: center;
+    .success {
+      color: #2e7d32;
+      font-weight: bold;
+    }
+
+    .error {
+      color: #c62828;
+      font-weight: bold;
     }
   </style>
 </head>
 
 <body>
 
-<div class="container">
+  <h1>📱 QRコード読み取り</h1>
 
-  <h1>QRコード読み取り</h1>
-
-  <div class="card">
-
-    <div id="reader"></div>
-
-    <div id="message">
-      「カメラを起動」を押してください。
-    </div>
-
-    <button
-      id="startButton"
-      type="button"
-      onclick="startScanner()">
-      📷 カメラを起動
-    </button>
-
-    <button
-      id="stopButton"
-      type="button"
-      onclick="stopScanner()">
-      カメラを停止
-    </button>
-
-    <button
-      id="backButton"
-      type="button"
-      onclick="goBack()">
-      ← 入出庫管理へ戻る
-    </button>
-
-    <div class="hint">
-      QRコードをカメラ中央の枠内に入れてください。<br>
-      読み取り成功後、自動的に処理画面へ移動します。
-    </div>
-
+  <div id="message">
+    QRコード読み取り画面です。
   </div>
 
-</div>
+  <div id="reader"></div>
 
-<script
-  src="https://unpkg.com/html5-qrcode"
-  type="text/javascript">
-</script>
+  <button id="startButton" onclick="startScanner()">
+    📷 カメラを起動する
+  </button>
 
-<script>
+  <button id="backButton" onclick="goBack()">
+    ← 戻る
+  </button>
 
-var scanner = null;
-var scanning = false;
-var finished = false;
+  <script>
 
-var returnUrl =
-  "https://script.google.com/macros/s/AKfycbwzNo1eSSIO3i2VA7UjLUj9Rj4kEWKiQPfx8xYWMuLLYoc2v5Dtkh5TY8F502Za72Q/exec";
+    // ==========================================
+    // 基本設定
+    // ==========================================
 
-var params = new URLSearchParams(window.location.search);
+    var scanner = null;
+    var scanning = false;
+    var finished = false;
 
-var mode = params.get("mode") || "inbound";
+    var params = new URLSearchParams(window.location.search);
 
+    // 入庫 / 出庫
+    var mode = params.get("mode") || "inbound";
 
-function setMessage(text, className) {
+    // Apps Script
+    var returnUrl =
+      "https://script.google.com/macros/s/AKfycbwzNo1eSSIO3i2VA7UjLUj9Rj4kEWKiQPfx8xYWMuLLYoc2v5Dtkh5TY8F502Za72Q/exec";
 
-  var message = document.getElementById("message");
 
-  message.textContent = text;
+    // ==========================================
+    // 画面メッセージ
+    // ==========================================
 
-  message.className = className || "";
-}
+    function setMessage(text, type) {
 
+      var message = document.getElementById("message");
 
-function setButtonState(running) {
+      message.className = type || "";
 
-  document.getElementById("startButton").style.display =
-    running ? "none" : "block";
-
-  document.getElementById("stopButton").style.display =
-    running ? "block" : "none";
-}
-
-
-function startScanner() {
-
-  if (scanning) return;
-
-  if (typeof Html5Qrcode === "undefined") {
-
-    setMessage(
-      "QR読み取りライブラリを読み込めませんでした。",
-      "error"
-    );
-
-    return;
-  }
-
-  setMessage(
-    "背面カメラを起動しています...",
-    ""
-  );
-
-  scanner = new Html5Qrcode("reader");
-
-  scanning = true;
-  finished = false;
-
-  setButtonState(true);
-
-  var config = {
-
-    fps: 10,
-
-    qrbox: function(width, height) {
-
-      var size =
-        Math.floor(Math.min(width, height) * 0.72);
-
-      size =
-        Math.max(180, Math.min(size, 320));
-
-      return {
-        width: size,
-        height: size
-      };
-    },
-
-    aspectRatio: 1.0
-  };
-
-
-  scanner.start(
-
-    {
-      facingMode: "environment"
-    },
-
-    config,
-
-    onScanSuccess,
-
-    onScanFailure
-
-  )
-
-  .then(function() {
-
-    setMessage(
-      "カメラ起動済みです。\nQRコードを映してください。",
-      ""
-    );
-
-  })
-
-  .catch(function(error) {
-
-    console.error(error);
-
-    scanning = false;
-    finished = false;
-
-    setButtonState(false);
-
-    setMessage(
-
-      "カメラを起動できませんでした。\n\n" +
-      "スマートフォンのブラウザで\n" +
-      "カメラの使用を許可してください。\n\n" +
-      "エラー：" +
-      (error.message || error),
-
-      "error"
-
-    );
-
-    scanner = null;
-  });
-}
-
-
-function onScanFailure(errorMessage) {
-  // 読み取り失敗は無視
-}
-
-
-function onScanSuccess(decodedText) {
-
-  if (finished) return;
-
-  finished = true;
-
-  var value =
-    String(decodedText || "").trim();
-
-  if (!value) {
-
-    finished = false;
-
-    return;
-  }
-
-
-  /* QRの中身がURLの場合 */
-  try {
-
-    var qrUrl = new URL(value);
-
-    var qrId =
-      qrUrl.searchParams.get("id");
-
-    if (qrId) {
-
-      value =
-        String(qrId).trim();
+      message.textContent = text;
     }
 
-  } catch (e) {
-    // URLではない通常のQR
-  }
+
+    // ==========================================
+    // ボタン状態
+    // ==========================================
+
+    function setButtonState(running) {
+
+      var button = document.getElementById("startButton");
+
+      if (running) {
+
+        button.disabled = true;
+        button.textContent = "📷 読み取り中...";
+
+      } else {
+
+        button.disabled = false;
+        button.textContent = "📷 カメラを起動する";
+
+      }
+    }
 
 
-  /* 出庫 */
-  if (mode === "stockout") {
+    // ==========================================
+    // QR読み取り開始
+    // ==========================================
 
-    setMessage(
+    function startScanner() {
 
-      "商品QRを読み取りました：\n" +
-      value +
-      "\n\n出庫処理画面へ移動します...",
-
-      "success"
-    );
-
-  }
-
-  /* 入庫 */
-  else {
-
-    setMessage(
-
-      "納品書QRを読み取りました：\n" +
-      value +
-      "\n\n入庫処理画面へ移動します...",
-
-      "success"
-    );
-  }
-
-
-  var targetUrl;
-
-
-  if (mode === "stockout") {
-
-    targetUrl =
-      returnUrl +
-      "?id=" +
-      encodeURIComponent(value) +
-      "&stockout=1";
-
-  }
-
-  else {
-
-    targetUrl =
-      returnUrl +
-      "?id=" +
-      encodeURIComponent(value);
-
-  }
-
-
-  console.log("モード：", mode);
-
-  console.log("移動先：", targetUrl);
-
-
-  setTimeout(function() {
-
-    window.location.href =
-      targetUrl;
-
-  }, 500);
-}
-
-
-function stopScanner() {
-
-  if (!scanner || !scanning) {
-
-    scanning = false;
-
-    setButtonState(false);
-
-    return;
-  }
-
-
-  scanner.stop()
-
-    .then(function() {
-
-      try {
-
-        scanner.clear();
-
-      } catch (e) {
-
-        console.log(e);
+      if (scanning) {
+        return;
       }
 
-      scanner = null;
+      if (typeof Html5Qrcode === "undefined") {
 
-      scanning = false;
+        setMessage(
+          "QR読み取りライブラリを読み込めませんでした。",
+          "error"
+        );
 
-      setButtonState(false);
+        return;
+      }
 
       setMessage(
-        "カメラを停止しました。",
+        "背面カメラを起動しています...\n少しお待ちください。",
         ""
       );
 
-    })
+      scanner = new Html5Qrcode("reader");
 
-    .catch(function(error) {
+      scanning = true;
+      finished = false;
 
-      console.log(error);
-
-      scanner = null;
-
-      scanning = false;
-
-      setButtonState(false);
-    });
-}
+      setButtonState(true);
 
 
-function goBack() {
+      var config = {
 
-  stopScanner();
+        fps: 20,
 
-  window.location.href =
-    returnUrl;
-}
+        qrbox: function(width, height) {
+
+          var size =
+            Math.floor(Math.min(width, height) * 0.85);
+
+          size = Math.max(200, Math.min(size, 500));
+
+          return {
+            width: size,
+            height: size
+          };
+        },
+
+        aspectRatio: 1.0,
+
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE
+        ],
+
+        disableFlip: true
+      };
 
 
-window.addEventListener(
-  "beforeunload",
-  function() {
+      scanner.start(
 
-    if (scanner && scanning) {
+        {
+          facingMode: "environment"
+        },
+
+        config,
+
+        onScanSuccess,
+
+        onScanFailure
+
+      )
+      .then(function() {
+
+        setMessage(
+          "カメラ起動済みです。\n\n" +
+          "QRコードを画面中央に大きく映してください。",
+          ""
+        );
+
+      })
+      .catch(function(error) {
+
+        console.error(error);
+
+        scanning = false;
+        finished = false;
+
+        setButtonState(false);
+
+        setMessage(
+          "カメラを起動できませんでした。\n\n" +
+          "スマートフォンのブラウザで\n" +
+          "カメラの使用を許可してください。\n\n" +
+          "エラー：" +
+          (error.message || error),
+          "error"
+        );
+
+        scanner = null;
+      });
+    }
+
+
+    // ==========================================
+    // QR読み取り成功
+    // ==========================================
+
+    function onScanSuccess(decodedText, decodedResult) {
+
+      if (finished) {
+        return;
+      }
+
+      finished = true;
+
+      console.log("QR読み取り成功:", decodedText);
+
+      var value = decodedText.trim();
+
+      // ==========================================
+      // QRの中身がURLだった場合
+      // ==========================================
 
       try {
 
-        scanner.stop();
+        if (
+          value.indexOf("http://") === 0 ||
+          value.indexOf("https://") === 0
+        ) {
 
-      } catch (e) {
+          var url = new URL(value);
 
-        console.log(e);
+          var qrId = url.searchParams.get("id");
+
+          if (qrId) {
+            value = qrId;
+          }
+        }
+
+      } catch (error) {
+
+        console.log("URLではありません:", value);
+
+      }
+
+
+      // ==========================================
+      // 入庫
+      // ==========================================
+
+      if (mode === "inbound") {
+
+        setMessage(
+          "✅ 読み取りました\n\n" +
+          value +
+          "\n\n" +
+          "入庫処理画面へ戻ります。",
+          "success"
+        );
+
+        stopScanner();
+
+        setTimeout(function() {
+
+          window.location.href =
+            returnUrl +
+            "?id=" +
+            encodeURIComponent(value);
+
+        }, 700);
+
+        return;
+      }
+
+
+      // ==========================================
+      // 出庫
+      // ==========================================
+
+      if (mode === "stockout") {
+
+        setMessage(
+          "✅ 読み取りました\n\n" +
+          value +
+          "\n\n" +
+          "出庫処理画面へ戻ります。",
+          "success"
+        );
+
+        stopScanner();
+
+        setTimeout(function() {
+
+          window.location.href =
+            returnUrl +
+            "?id=" +
+            encodeURIComponent(value) +
+            "&stockout=1";
+
+        }, 700);
+
+        return;
       }
     }
-  }
-);
 
-</script>
+
+    // ==========================================
+    // QR読み取り失敗
+    // ※何も表示しない
+    // ==========================================
+
+    function onScanFailure(error) {
+      // 読み取り途中のエラーは無視
+    }
+
+
+    // ==========================================
+    // カメラ停止
+    // ==========================================
+
+    function stopScanner() {
+
+      if (!scanner) {
+        scanning = false;
+        setButtonState(false);
+        return;
+      }
+
+      scanner.stop()
+        .then(function() {
+
+          scanning = false;
+
+          setButtonState(false);
+
+        })
+        .catch(function(error) {
+
+          console.log("カメラ停止エラー:", error);
+
+          scanning = false;
+
+          setButtonState(false);
+        });
+    }
+
+
+    // ==========================================
+    // 戻る
+    // ==========================================
+
+    function goBack() {
+
+      stopScanner();
+
+      setTimeout(function() {
+
+        window.location.href = returnUrl;
+
+      }, 200);
+    }
+
+
+    // ==========================================
+    // 画面を開いたとき
+    // ==========================================
+
+    window.onload = function() {
+
+      if (mode === "stockout") {
+
+        setMessage(
+          "📦 出庫用QR読み取り\n\n" +
+          "商品QRコードを読み取ってください。",
+          ""
+        );
+
+      } else {
+
+        setMessage(
+          "📥 入庫用QR読み取り\n\n" +
+          "納品書のQRコードを読み取ってください。",
+          ""
+        );
+      }
+
+    };
+
+  </script>
 
 </body>
 </html>
